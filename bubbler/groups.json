@@ -1,0 +1,37 @@
+{
+  "_comment": "Effect groups for the totem's auto-cycling show mode. Each group becomes a WLED playlist preset; each entry becomes a single-effect preset. Effect names must match /json/eff exactly (seed_presets.py warns on misses). 'pal' is a palette id (6 = Party). sx/ix are speed/intensity 0-255.",
+  "ambient_group": "Ambient",
+  "groups": {
+    "Ambient": [
+      {"fx": "Pacifica"},
+      {"fx": "Aurora"},
+      {"fx": "Flow", "pal": 6},
+      {"fx": "Colorwaves", "pal": 6},
+      {"fx": "Lake", "pal": 6}
+    ],
+    "Pulse": [
+      {"fx": "Gravcenter", "pal": 6},
+      {"fx": "Gravcentric", "pal": 6},
+      {"fx": "Puddlepeak", "pal": 6},
+      {"fx": "Ripple Peak", "pal": 6},
+      {"fx": "GEQ", "pal": 6},
+      {"fx": "DJ Light"}
+    ],
+    "Flow": [
+      {"fx": "Waverly", "pal": 6},
+      {"fx": "Pixelwave", "pal": 6},
+      {"fx": "Noisemove", "pal": 6},
+      {"fx": "Freqwave"},
+      {"fx": "Gravimeter", "pal": 6},
+      {"fx": "Blurz", "pal": 6}
+    ],
+    "Party": [
+      {"fx": "Noisefire"},
+      {"fx": "Matripix", "pal": 6},
+      {"fx": "Freqmatrix"},
+      {"fx": "Rocktaves", "pal": 6},
+      {"fx": "Funky Plank"},
+      {"fx": "Waterfall", "pal": 6}
+    ]
+  }
+}

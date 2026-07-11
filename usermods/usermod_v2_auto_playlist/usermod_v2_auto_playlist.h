@@ -75,6 +75,13 @@ class AutoPlaylistUsermod : public Usermod {
     int ideal_change_min = 10000; // ideally change patterns no less than this number of millis
     int ideal_change_max = 20000; // ideally change patterns no more than this number of millis
 
+    bool anyPlaylist = false;     // WLEDMM/Bubbler: manually selecting any playlist (except ambient) adopts it as the music playlist instead of disabling autochange
+    bool beatQuantize = false;    // WLEDMM/Bubbler: hold preset changes until the next samplePeak (beat onset) from audioreactive
+    int beatWait = 1500;          // WLEDMM/Bubbler: max millis to wait for a beat before changing anyway
+
+    uint8_t pending_preset = 0;   // preset change decided but waiting for a beat onset
+    unsigned long pending_since = 0;
+
     std::vector<int> autoChangeIds;
   
     static const char _name[];
@@ -86,6 +93,9 @@ class AutoPlaylistUsermod : public Usermod {
     static const char _change_lockout[];
     static const char _ideal_change_min[];
     static const char _ideal_change_max[];
+    static const char _anyPlaylist[];
+    static const char _beatQuantize[];
+    static const char _beatWait[];
 
   public:
 
@@ -256,9 +266,15 @@ class AutoPlaylistUsermod : public Usermod {
             // go into freefall - this logic stops that from triggering right
             // after change_lockout. Better for smaller change_lockout values.
 
-            suspendPlaylist();       // suspend the playlist engine before changing to another preset
-            applyPreset(newpreset, CALL_MODE_NOTIFICATION);
-            
+            if (beatQuantize) {
+              // defer the actual preset change to the next beat onset (samplePeak), see loop()
+              pending_preset = newpreset;
+              pending_since = millis();
+            } else {
+              suspendPlaylist();       // suspend the playlist engine before changing to another preset
+              applyPreset(newpreset, CALL_MODE_NOTIFICATION);
+            }
+
             #ifdef USERMOD_AUTO_PLAYLIST_DEBUG
             USER_PRINTF("*** CHANGE distance = %4lu - change_interval was %5ldms - next change_threshold is %4u (%4u diff aprox)\n",(unsigned long)distance,change_interval,change_threshold,change_threshold_change);
             #endif
@@ -290,7 +306,17 @@ class AutoPlaylistUsermod : public Usermod {
       if (millis() < 10000) return; // Wait for device to settle
 
       if (lastAutoPlaylist > 0 && currentPlaylist != lastAutoPlaylist && currentPreset != 0) {
-        if (functionality_enabled) {
+        if (anyPlaylist && currentPlaylist > 0 && currentPlaylist != ambientPlaylist) {
+          // adopt the manually selected playlist as the new music "group" and keep cycling within it
+          #ifdef USERMOD_AUTO_PLAYLIST_DEBUG
+          USER_PRINTF("AutoPlaylist: adopting playlist %d as music playlist (was %u)\n", currentPlaylist, musicPlaylist);
+          #endif
+          musicPlaylist = currentPlaylist;
+          lastAutoPlaylist = currentPlaylist;
+          autoChangeIds.clear();
+          pending_preset = 0;
+          functionality_enabled = true;
+        } else if (functionality_enabled) {
           #ifdef USERMOD_AUTO_PLAYLIST_DEBUG
           USER_PRINTF("AutoPlaylist: disable due to manual change of playlist from %u to %d, preset:%u\n", lastAutoPlaylist, currentPlaylist, currentPreset);
           #endif
@@ -343,6 +369,18 @@ class AutoPlaylistUsermod : public Usermod {
           silenceDetected = false;
           USER_PRINTLN("AutoPlaylist: Sound detected");
           changePlaylist(musicPlaylist);
+        }
+        if (pending_preset > 0) {
+          // beat-quantized change: wait for a samplePeak (beat onset), or give up after beatWait ms
+          bool beatDetected = (*(uint8_t*)um_data->u_data[3]) != 0;
+          if (beatDetected || (millis() - pending_since > (unsigned long)beatWait)) {
+            suspendPlaylist();       // suspend the playlist engine before changing to another preset
+            applyPreset(pending_preset, CALL_MODE_NOTIFICATION);
+            #ifdef USERMOD_AUTO_PLAYLIST_DEBUG
+            USER_PRINTF("AutoPlaylist: beat-quantized change to preset %u (%s, waited %lums)\n", pending_preset, beatDetected ? "beat":"timeout", millis()-pending_since);
+            #endif
+            pending_preset = 0;
+          }
         }
         if (autoChange && millis() >= autochange_timer+22) {
           change(um_data);
@@ -441,6 +479,9 @@ class AutoPlaylistUsermod : public Usermod {
       top[FPSTR(_change_lockout)]      = change_lockout;
       top[FPSTR(_ideal_change_min)]    = ideal_change_min;
       top[FPSTR(_ideal_change_max)]    = ideal_change_max;
+      top[FPSTR(_anyPlaylist)]         = anyPlaylist;
+      top[FPSTR(_beatQuantize)]        = beatQuantize;
+      top[FPSTR(_beatWait)]            = beatWait;
 
       lastAutoPlaylist = 0;
 
@@ -478,6 +519,9 @@ class AutoPlaylistUsermod : public Usermod {
       change_lockout   = top[FPSTR(_change_lockout)]      | change_lockout;
       ideal_change_min = top[FPSTR(_ideal_change_min)]    | ideal_change_min;
       ideal_change_max = top[FPSTR(_ideal_change_max)]    | ideal_change_max;
+      anyPlaylist      = top[FPSTR(_anyPlaylist)]         | anyPlaylist;
+      beatQuantize     = top[FPSTR(_beatQuantize)]        | beatQuantize;
+      beatWait         = top[FPSTR(_beatWait)]            | beatWait;
 
       #ifdef USERMOD_AUTO_PLAYLIST_DEBUG
       USER_PRINT(FPSTR(_name));
@@ -485,7 +529,7 @@ class AutoPlaylistUsermod : public Usermod {
       #endif
 
       // use "return !top["newestParameter"].isNull();" when updating Usermod with new features
-      return true;
+      return !top[FPSTR(_beatWait)].isNull();
 
   }
 
@@ -506,6 +550,7 @@ class AutoPlaylistUsermod : public Usermod {
         USER_PRINTF("AutoPlaylist: Applying \"%s\"\n", name.c_str());
         #endif
         // if (currentPlaylist != id) {  // un-comment to only change on "real" changes
+          pending_preset = 0; // cancel any beat-quantized change still waiting
           unloadPlaylist(); // applying a preset requires to unload previous playlist
           applyPreset(id, CALL_MODE_NOTIFICATION);
         // }
@@ -523,3 +568,6 @@ const char AutoPlaylistUsermod::_autoChange[]          PROGMEM = "autoChange";
 const char AutoPlaylistUsermod::_change_lockout[]      PROGMEM = "change_lockout";
 const char AutoPlaylistUsermod::_ideal_change_min[]    PROGMEM = "ideal_change_min";
 const char AutoPlaylistUsermod::_ideal_change_max[]    PROGMEM = "ideal_change_max";
+const char AutoPlaylistUsermod::_anyPlaylist[]         PROGMEM = "anyPlaylist";
+const char AutoPlaylistUsermod::_beatQuantize[]        PROGMEM = "beatQuantize";
+const char AutoPlaylistUsermod::_beatWait[]            PROGMEM = "beatWait_ms";
