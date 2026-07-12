@@ -27,6 +27,7 @@ PLAYLIST_DUR_TENTHS = 120   # 12s per entry if the usermod is off/suspended
 PLAYLIST_TRANSITION = 7     # 0.7s crossfade
 MOTOR_PRESET_ID = 250       # quickload toggle for the bubble motor (MultiRelay 0 = GPIO6)
 CYCLE_PRESET_ID = 249       # quickload toggle for motor duty-cycle mode (20s on / 2min, see cfg)
+STOP_PRESET_ID = 248        # quickload: stop the running playlist, keep current effect
 
 
 def api(path):
@@ -158,17 +159,26 @@ def main():
     time.sleep(1)  # let the last psave finish writing presets.json
     add_motor_toggle_preset()
 
+    # final direct patch of presets.json: things psave can't express.
+    # - bubbler on/off embedded in effect presets (psave snapshots only
+    #   relay *state*, which is ignored on apply)
+    # - the Stop Playlist button: psave with a "playlist" key saves the
+    #   currently loaded playlist, not the posted one, so an empty-playlist
+    #   command preset has to be written into the file directly
+    time.sleep(1)
+    presets = api("/presets.json")
+    for pid, on in bubbler_ids.items():
+        presets[str(pid)]["MultiRelay"] = {"relay": 0, "on": on}
+    presets[str(STOP_PRESET_ID)] = {
+        "n": "Stop Playlist", "ql": "STP",
+        # empty playlist = unload current one, keep the running effect
+        "playlist": {"ps": []},
+    }
+    upload_presets_file(json.dumps(presets).encode())
     if bubbler_ids:
-        # MultiRelay "on" commands can't be captured by psave snapshots
-        # (WLED saves relay *state*, which is ignored on apply) - patch the
-        # presets file directly instead
-        time.sleep(1)
-        presets = api("/presets.json")
-        for pid, on in bubbler_ids.items():
-            presets[str(pid)]["MultiRelay"] = {"relay": 0, "on": on}
-        upload_presets_file(json.dumps(presets).encode())
         on_ids = [p for p, on in bubbler_ids.items() if on]
         print(f"bubbler ON during presets {on_ids}, off for the rest of their group")
+    print(f"preset {STOP_PRESET_ID}  Stop Playlist  [quickload STP]")
 
     if missing:
         print("\nWARNING - effect names not found on device:", ", ".join(missing))
