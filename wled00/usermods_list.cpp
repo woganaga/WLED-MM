@@ -207,6 +207,10 @@
 #include "../usermods/usermod_v2_auto_playlist/usermod_v2_auto_playlist.h"
 #endif
 
+#ifdef USERMOD_BUBBLER_BLE
+#include "../usermods/bubbler_ble/usermod_bubbler_ble.h" // requires multi_relay include above for status getters
+#endif
+
 void registerUsermods()
 {
   /*
@@ -407,6 +411,10 @@ void registerUsermods()
 
 #ifdef USERMOD_AUTO_PLAYLIST
   usermods.add(new AutoPlaylistUsermod(false));
+#endif
+
+#ifdef USERMOD_BUBBLER_BLE
+  usermods.add(new BubblerBLEUsermod());
 #endif
 
 

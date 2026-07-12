@@ -188,6 +188,10 @@ class MultiRelay : public Usermod {
     // WLEDMM/Bubbler: process one relay command object ({"relay":N,"on":...} / {"relay":N,"cycle":...})
     void handleJsonCommand(int rly, JsonVariant cmd);
 
+    // WLEDMM/Bubbler: state getters for other usermods (BLE status)
+    inline bool relayState(uint8_t r)   { return (r < MULTI_RELAY_MAX_RELAYS) ? _relay[r].state : false; }
+    inline bool relayCycling(uint8_t r) { return (r < MULTI_RELAY_MAX_RELAYS) ? _relay[r].cycling : false; }
+
     /**
      * provide the changeable values
      */
