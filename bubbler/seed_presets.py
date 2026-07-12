@@ -26,6 +26,7 @@ FIRST_EFFECT_PRESET = 10
 PLAYLIST_DUR_TENTHS = 120   # 12s per entry if the usermod is off/suspended
 PLAYLIST_TRANSITION = 7     # 0.7s crossfade
 MOTOR_PRESET_ID = 250       # quickload toggle for the bubble motor (MultiRelay 0 = GPIO6)
+CYCLE_PRESET_ID = 249       # quickload toggle for motor duty-cycle mode (20s on / 2min, see cfg)
 
 
 def api(path):
@@ -73,6 +74,12 @@ def add_motor_toggle_preset():
     post_state({"psave": MOTOR_PRESET_ID, "n": "Bubbles (toggle)", "ql": "BUB",
                 "o": True, "MultiRelay": {"relay": 0, "on": "t"}})
     print(f"preset {MOTOR_PRESET_ID}  Bubbles (toggle)  [quickload BUB]")
+    time.sleep(1.0)
+    # duty-cycle mode: on cycle-for-s every cycle-every-s (bubbler fork of
+    # the MultiRelay usermod; times configurable in usermod settings)
+    post_state({"psave": CYCLE_PRESET_ID, "n": "Bubbles auto (20s/2min)", "ql": "B2",
+                "o": True, "MultiRelay": {"relay": 0, "cycle": "t"}})
+    print(f"preset {CYCLE_PRESET_ID}  Bubbles auto  [quickload B2]")
 
 
 def main():

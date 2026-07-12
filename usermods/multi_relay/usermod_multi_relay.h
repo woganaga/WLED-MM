@@ -41,8 +41,12 @@ typedef struct relay_t {
     bool state    : 1;  // 1 relay is On, 0 relay is Off
     bool external : 1;  // is the relay externally controlled
     int8_t button : 4;  // which button triggers relay
+    bool cycling  : 1;  // WLEDMM/Bubbler: duty-cycle mode active (on cycleFor s every cycleEvery s)
   };
   uint16_t delay;       // amount of ms to wait after it is activated
+  uint16_t cycleEvery;  // WLEDMM/Bubbler: cycle period in seconds
+  uint16_t cycleFor;    // WLEDMM/Bubbler: on-time within each period in seconds
+  unsigned long cycleStart; // WLEDMM/Bubbler: millis() when cycling was enabled
 } Relay;
 
 
@@ -80,6 +84,8 @@ class MultiRelay : public Usermod {
     static const char _HAautodiscovery[];
     static const char _pcf8574[];
     static const char _pcfAddress[];
+    static const char _cycleEvery[];
+    static const char _cycleFor[];
 
     void handleOffTimer();
     void InitHtmlAPIHandle();
@@ -178,6 +184,9 @@ class MultiRelay : public Usermod {
      * Values in the state object may be modified by connected clients
      */
     void readFromJsonState(JsonObject &root);
+
+    // WLEDMM/Bubbler: process one relay command object ({"relay":N,"on":...} / {"relay":N,"cycle":...})
+    void handleJsonCommand(int rly, JsonVariant cmd);
 
     /**
      * provide the changeable values
@@ -341,6 +350,10 @@ MultiRelay::MultiRelay() {
     _relay[i].state    = false;
     _relay[i].external = false;
     _relay[i].button   = -1;
+    _relay[i].cycling    = false;
+    _relay[i].cycleEvery = 120;
+    _relay[i].cycleFor   = 20;
+    _relay[i].cycleStart = 0;
   }
 }
 
@@ -512,6 +525,14 @@ void MultiRelay::loop() {
     }
   }
 
+  // WLEDMM/Bubbler: duty-cycle mode for external relays
+  for (int i=0; i<MULTI_RELAY_MAX_RELAYS; i++) {
+    if (!_relay[i].cycling || (_relay[i].pin<0 && !usePcf8574) || !_relay[i].external) continue;
+    unsigned long phase = (millis() - _relay[i].cycleStart) % ((unsigned long)_relay[i].cycleEvery * 1000UL);
+    bool shouldBeOn = phase < (unsigned long)_relay[i].cycleFor * 1000UL;
+    if (_relay[i].state != shouldBeOn) switchRelay(i, shouldBeOn);
+  }
+
   handleOffTimer();
 }
 
@@ -640,6 +661,7 @@ void MultiRelay::addToJsonInfo(JsonObject &root) {
       uiDomString += F("<i class=\"icons");
       uiDomString += _relay[i].state ? F(" on") : F(" off");
       uiDomString += F("\">&#xe08f;</i></button>");
+      if (_relay[i].cycling) uiDomString += F(" cycling"); // WLEDMM/Bubbler
       infoArr.add(uiDomString);
     }
   }
@@ -662,10 +684,12 @@ void MultiRelay::addToJsonState(JsonObject &root) {
     JsonObject relay = rel_arr.createNestedObject();
     relay[FPSTR(_relay_str)] = i;
     relay[F("state")] = _relay[i].state;
+    relay[F("cycling")] = _relay[i].cycling; // WLEDMM/Bubbler
   }
   #else
   multiRelay[FPSTR(_relay_str)] = 0;
   multiRelay[F("state")] = _relay[0].state;
+  multiRelay[F("cycling")] = _relay[0].cycling; // WLEDMM/Bubbler
   #endif
 }
 
@@ -673,28 +697,48 @@ void MultiRelay::addToJsonState(JsonObject &root) {
  * readFromJsonState() can be used to receive data clients send to the /json/state part of the JSON API (state object).
  * Values in the state object may be modified by connected clients
  */
+void MultiRelay::handleJsonCommand(int rly, JsonVariant cmd) {
+  if (rly < 0 || rly >= MULTI_RELAY_MAX_RELAYS) return;
+
+  // WLEDMM/Bubbler: duty-cycle mode ("cycle": true/false/"t")
+  JsonVariant cyc = cmd["cycle"];
+  if (!cyc.isNull()) {
+    bool start = _relay[rly].cycling; // default: unchanged
+    if (cyc.is<bool>()) start = cyc.as<bool>();
+    else if (cyc.is<const char*>() && cyc.as<const char*>()[0] == 't') start = !_relay[rly].cycling;
+    if (start && !_relay[rly].cycling) {
+      _relay[rly].cycling = true;
+      _relay[rly].cycleStart = millis();
+      switchRelay(rly, true); // on-phase begins immediately
+    } else if (!start && _relay[rly].cycling) {
+      _relay[rly].cycling = false;
+      switchRelay(rly, false);
+    }
+    return; // don't mix cycle and on/off in one command
+  }
+
+  if (cmd["on"].is<bool>()) {
+    // absolute on/off (e.g. embedded in effect presets): a running cycle wins
+    if (!_relay[rly].cycling) switchRelay(rly, cmd["on"].as<bool>());
+  } else if (cmd["on"].is<const char*>() && cmd["on"].as<const char*>()[0] == 't') {
+    // manual toggle (quickload button): the human wins - cancel the cycle
+    _relay[rly].cycling = false;
+    toggleRelay(rly);
+  }
+}
+
 void MultiRelay::readFromJsonState(JsonObject &root) {
   if (!initDone || !enabled) return;  // prevent crash on boot applyPreset()
   JsonObject usermod = root[FPSTR(_name)];
   if (!usermod.isNull()) {
     if (usermod[FPSTR(_relay_str)].is<int>() && usermod[FPSTR(_relay_str)].as<int>()>=0) {
-      int rly = usermod[FPSTR(_relay_str)].as<int>();
-      if (usermod["on"].is<bool>()) {
-        switchRelay(rly, usermod["on"].as<bool>());
-      } else if (usermod["on"].is<const char*>() && usermod["on"].as<const char*>()[0] == 't') {
-        toggleRelay(rly);
-      }
+      handleJsonCommand(usermod[FPSTR(_relay_str)].as<int>(), usermod);
     }
   } else if (root[FPSTR(_name)].is<JsonArray>()) {
     JsonArray relays = root[FPSTR(_name)].as<JsonArray>();
     for (JsonVariant r : relays) {
       if (r[FPSTR(_relay_str)].is<int>() && r[FPSTR(_relay_str)].as<int>()>=0) {
-        int rly = r[FPSTR(_relay_str)].as<int>();
-        if (r["on"].is<bool>()) {
-          switchRelay(rly, r["on"].as<bool>());
-        } else if (r["on"].is<const char*>() && r["on"].as<const char*>()[0] == 't') {
-          toggleRelay(rly);
-        }
+        handleJsonCommand(r[FPSTR(_relay_str)].as<int>(), r);
       }
     }
   }
@@ -719,6 +763,8 @@ void MultiRelay::addToConfig(JsonObject &root) {
     relay[FPSTR(_delay_str)]  = _relay[i].delay;
     relay[FPSTR(_external)]   = _relay[i].external;
     relay[FPSTR(_button)]     = _relay[i].button;
+    relay[FPSTR(_cycleEvery)] = _relay[i].cycleEvery; // WLEDMM/Bubbler
+    relay[FPSTR(_cycleFor)]   = _relay[i].cycleFor;   // WLEDMM/Bubbler
   }
   DEBUG_PRINTLN(F("MultiRelay config saved."));
 }
@@ -766,6 +812,10 @@ bool MultiRelay::readFromConfig(JsonObject &root) {
     _relay[i].external = top[parName][FPSTR(_external)]   | _relay[i].external;
     _relay[i].delay    = top[parName][FPSTR(_delay_str)]  | _relay[i].delay;
     _relay[i].button   = top[parName][FPSTR(_button)]     | _relay[i].button;
+    _relay[i].cycleEvery = top[parName][FPSTR(_cycleEvery)] | _relay[i].cycleEvery; // WLEDMM/Bubbler
+    _relay[i].cycleFor   = top[parName][FPSTR(_cycleFor)]   | _relay[i].cycleFor;   // WLEDMM/Bubbler
+    _relay[i].cycleEvery = constrain(_relay[i].cycleEvery, 5, 3600);
+    _relay[i].cycleFor   = constrain(_relay[i].cycleFor, 1, _relay[i].cycleEvery);
     // begin backwards compatibility (beta) remove when 0.13 is released
     parName += '-';
     _relay[i].pin      = top[parName+"pin"] | _relay[i].pin;
@@ -817,3 +867,5 @@ const char MultiRelay::_broadcast[]       PROGMEM = "broadcast-sec";
 const char MultiRelay::_HAautodiscovery[] PROGMEM = "HA-autodiscovery";
 const char MultiRelay::_pcf8574[]         PROGMEM = "use-PCF8574";
 const char MultiRelay::_pcfAddress[]      PROGMEM = "first-PCF8574";
+const char MultiRelay::_cycleEvery[]      PROGMEM = "cycle-every-s"; // WLEDMM/Bubbler
+const char MultiRelay::_cycleFor[]        PROGMEM = "cycle-for-s";   // WLEDMM/Bubbler
