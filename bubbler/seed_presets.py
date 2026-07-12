@@ -25,6 +25,7 @@ BASE = f"http://{HOST}"
 FIRST_EFFECT_PRESET = 10
 PLAYLIST_DUR_TENTHS = 120   # 12s per entry if the usermod is off/suspended
 PLAYLIST_TRANSITION = 7     # 0.7s crossfade
+MOTOR_PRESET_ID = 250       # quickload toggle for the bubble motor (MultiRelay 0 = GPIO6)
 
 
 def api(path):
@@ -40,6 +41,34 @@ def post_state(state):
     )
     with urllib.request.urlopen(req, timeout=10) as r:
         return json.load(r)
+
+
+def upload_file(path, data: bytes):
+    boundary = "----bubblerseed"
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="data"; filename="{path}"\r\n'
+        f"Content-Type: application/octet-stream\r\n\r\n"
+    ).encode() + data + f"\r\n--{boundary}--\r\n".encode()
+    req = urllib.request.Request(
+        f"{BASE}/upload", data=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return r.status
+
+
+def add_motor_toggle_preset():
+    """Command-only preset (no light state) so tapping it just toggles the
+    motor relay. Saved by editing presets.json directly: psave would snapshot
+    the current segment state into the preset."""
+    presets = api("/presets.json")
+    presets[str(MOTOR_PRESET_ID)] = {
+        "n": "Bubbles (toggle)", "ql": "BUB",
+        "MultiRelay": {"relay": 0, "on": "t"},
+    }
+    upload_file("/presets.json", json.dumps(presets).encode())
+    print(f"preset {MOTOR_PRESET_ID}  Bubbles (toggle)  [quickload BUB]")
 
 
 def main():
@@ -94,6 +123,9 @@ def main():
         })
         print(f"playlist {pl_id}  {group}  -> presets {ids}")
         time.sleep(0.3)
+
+    time.sleep(1)  # let the last psave finish writing presets.json
+    add_motor_toggle_preset()
 
     if missing:
         print("\nWARNING - effect names not found on device:", ", ".join(missing))
