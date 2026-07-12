@@ -43,25 +43,27 @@ def post_state(state):
         return json.load(r)
 
 
-def reset_presets_file():
-    """Start from an empty presets.json. Re-saving an existing preset id goes
-    through WLED's in-place file patcher, which corrupts the file when many
-    ids are replaced in a row (keys blanked, stale bodies left behind);
-    appends to a fresh file are reliable. NOTE: wipes ALL presets on device."""
+def upload_presets_file(data: bytes):
     boundary = "----bubblerseed"
     body = (
         f"--{boundary}\r\n"
         f'Content-Disposition: form-data; name="data"; filename="/presets.json"\r\n'
         f"Content-Type: application/octet-stream\r\n\r\n"
-        '{"0":{}}'
-        f"\r\n--{boundary}--\r\n"
-    ).encode()
+    ).encode() + data + f"\r\n--{boundary}--\r\n".encode()
     req = urllib.request.Request(
         f"{BASE}/upload", data=body,
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
     )
     with urllib.request.urlopen(req, timeout=10):
         pass
+
+
+def reset_presets_file():
+    """Start from an empty presets.json. Re-saving an existing preset id goes
+    through WLED's in-place file patcher, which corrupts the file when many
+    ids are replaced in a row (keys blanked, stale bodies left behind);
+    appends to a fresh file are reliable. NOTE: wipes ALL presets on device."""
+    upload_presets_file(b'{"0":{}}')
     print("presets.json reset")
 
 
@@ -91,10 +93,13 @@ def main():
 
     next_id = FIRST_EFFECT_PRESET
     playlists = {}  # group -> [preset ids]
+    bubbler_ids = {}  # preset id -> motor on/off (groups that drive the bubbler)
     missing = []
 
     for group in ordered:
         ids = []
+        entries = [e for e in groups[group] if e["fx"] in fx_ids]
+        group_has_bubbler = any(e.get("bubbler") for e in entries)
         for entry in groups[group]:
             fx = entry["fx"]
             if fx not in fx_ids:
@@ -112,6 +117,10 @@ def main():
                         "psave": next_id, "n": f"{group}: {fx}",
                         "ib": True, "sb": True})
             print(f"preset {next_id:3d}  {group}: {fx}")
+            if group_has_bubbler:
+                # in a bubbler-driving group every preset sets the motor, so
+                # it turns off again when a non-bubbler effect comes up
+                bubbler_ids[next_id] = bool(entry.get("bubbler"))
             ids.append(next_id)
             next_id += 1
             time.sleep(1.0)  # rapid psave calls corrupt presets.json (in-place patcher race)
@@ -122,10 +131,11 @@ def main():
         if not ids:
             print(f"!! group {group} has no valid presets, skipping playlist")
             continue
+        dur = cfg.get("group_dur", {}).get(group, PLAYLIST_DUR_TENTHS)
         post_state({
             "playlist": {
                 "ps": ids,
-                "dur": [PLAYLIST_DUR_TENTHS] * len(ids),
+                "dur": [dur] * len(ids),
                 "transition": [PLAYLIST_TRANSITION] * len(ids),
                 "repeat": 0,
                 "end": 0,
@@ -140,6 +150,18 @@ def main():
 
     time.sleep(1)  # let the last psave finish writing presets.json
     add_motor_toggle_preset()
+
+    if bubbler_ids:
+        # MultiRelay "on" commands can't be captured by psave snapshots
+        # (WLED saves relay *state*, which is ignored on apply) - patch the
+        # presets file directly instead
+        time.sleep(1)
+        presets = api("/presets.json")
+        for pid, on in bubbler_ids.items():
+            presets[str(pid)]["MultiRelay"] = {"relay": 0, "on": on}
+        upload_presets_file(json.dumps(presets).encode())
+        on_ids = [p for p, on in bubbler_ids.items() if on]
+        print(f"bubbler ON during presets {on_ids}, off for the rest of their group")
 
     if missing:
         print("\nWARNING - effect names not found on device:", ", ".join(missing))
