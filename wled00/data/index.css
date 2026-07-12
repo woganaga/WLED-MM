@@ -261,6 +261,19 @@ button {
 	border: 0px;
 }
 
+/* WLEDMM/Bubbler: status bar under the live preview */
+#bubblerbar {
+	font-size: 12px;
+	line-height: 16px;
+	color: var(--c-b);
+	display: flex;
+	justify-content: space-between;
+	padding: 1px 8px 2px;
+	white-space: nowrap;
+	overflow: hidden;
+}
+#bubblerbar .on { color: var(--c-g); }
+
 #liveview2D {
 	height: 90%;
 	width: 90%;

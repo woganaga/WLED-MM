@@ -1976,6 +1976,19 @@ function readState(s,command=false)
 	selectSlot(csel);
 	if (i.cct != null && i.cct>=0) gId("sliderA").value = i.cct;
 
+	// WLEDMM/Bubbler: status bar (current effect + bubble motor timer)
+	var bbfx = gId('bbfx');
+	if (bbfx) {
+		var fxnm = "";
+		try { fxnm = eJson.find((o)=>{return o.id==i.fx;}).name; } catch(e) {}
+		bbfx.innerText = fxnm;
+		var mr = s.MultiRelay;
+		var bbcyc = gId('bbcyc');
+		if (mr && mr.cycling !== undefined) {
+			bbcyc.innerHTML = mr.cycling ? '<span class="on">timer active' + (mr.state ? ' &bull; bubbling':'') + '</span>' : 'timer off' + (mr.state ? ' &bull; <span class="on">bubbling</span>':'');
+		} else bbcyc.innerText = "";
+	}
+
 	gId('sliderSpeed').value = i.sx;
 	gId('sliderIntensity').value = i.ix;
 	gId('sliderC1').value  = i.c1 ? i.c1 : 0;

@@ -530,7 +530,10 @@ void MultiRelay::loop() {
     if (!_relay[i].cycling || (_relay[i].pin<0 && !usePcf8574) || !_relay[i].external) continue;
     unsigned long phase = (millis() - _relay[i].cycleStart) % ((unsigned long)_relay[i].cycleEvery * 1000UL);
     bool shouldBeOn = phase < (unsigned long)_relay[i].cycleFor * 1000UL;
-    if (_relay[i].state != shouldBeOn) switchRelay(i, shouldBeOn);
+    if (_relay[i].state != shouldBeOn) {
+      switchRelay(i, shouldBeOn);
+      stateUpdated(CALL_MODE_WS_SEND); // let open UIs refresh the status bar
+    }
   }
 
   handleOffTimer();
