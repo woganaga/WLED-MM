@@ -23,7 +23,7 @@
       {"fx": "Noisemove", "pal": 6},
       {"fx": "Freqwave"},
       {"fx": "Gravimeter", "pal": 6},
-      {"fx": "Blurz", "pal": 6}
+      {"fx": "Blurz Plus", "pal": 6}
     ],
     "Party": [
       {"fx": "Noisefire"},

@@ -43,31 +43,33 @@ def post_state(state):
         return json.load(r)
 
 
-def upload_file(path, data: bytes):
+def reset_presets_file():
+    """Start from an empty presets.json. Re-saving an existing preset id goes
+    through WLED's in-place file patcher, which corrupts the file when many
+    ids are replaced in a row (keys blanked, stale bodies left behind);
+    appends to a fresh file are reliable. NOTE: wipes ALL presets on device."""
     boundary = "----bubblerseed"
     body = (
         f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="data"; filename="{path}"\r\n'
+        f'Content-Disposition: form-data; name="data"; filename="/presets.json"\r\n'
         f"Content-Type: application/octet-stream\r\n\r\n"
-    ).encode() + data + f"\r\n--{boundary}--\r\n".encode()
+        '{"0":{}}'
+        f"\r\n--{boundary}--\r\n"
+    ).encode()
     req = urllib.request.Request(
         f"{BASE}/upload", data=body,
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
     )
-    with urllib.request.urlopen(req, timeout=10) as r:
-        return r.status
+    with urllib.request.urlopen(req, timeout=10):
+        pass
+    print("presets.json reset")
 
 
 def add_motor_toggle_preset():
-    """Command-only preset (no light state) so tapping it just toggles the
-    motor relay. Saved by editing presets.json directly: psave would snapshot
-    the current segment state into the preset."""
-    presets = api("/presets.json")
-    presets[str(MOTOR_PRESET_ID)] = {
-        "n": "Bubbles (toggle)", "ql": "BUB",
-        "MultiRelay": {"relay": 0, "on": "t"},
-    }
-    upload_file("/presets.json", json.dumps(presets).encode())
+    """Command-only preset ("o":true saves the API call itself, not a light
+    state snapshot) so tapping it just toggles the motor relay."""
+    post_state({"psave": MOTOR_PRESET_ID, "n": "Bubbles (toggle)", "ql": "BUB",
+                "o": True, "MultiRelay": {"relay": 0, "on": "t"}})
     print(f"preset {MOTOR_PRESET_ID}  Bubbles (toggle)  [quickload BUB]")
 
 
@@ -75,8 +77,14 @@ def main():
     cfg = json.loads((Path(__file__).parent / "groups.json").read_text())
     groups = cfg["groups"]
 
+    reset_presets_file()
+    time.sleep(1)
+
     effects = api("/json/eff")
-    fx_ids = {name.split("@")[0].strip(): i for i, name in enumerate(effects)}
+    # device names carry trailing audio-reactive glyphs (e.g. "GEQ ♫") - match on ASCII only
+    def norm(name):
+        return "".join(c for c in name.split("@")[0] if ord(c) < 128).strip()
+    fx_ids = {norm(name): i for i, name in enumerate(effects)}
 
     # ambient group first so it lands on playlist preset id 1
     ordered = sorted(groups, key=lambda g: g != cfg.get("ambient_group"))
@@ -102,7 +110,7 @@ def main():
             print(f"preset {next_id:3d}  {group}: {fx}")
             ids.append(next_id)
             next_id += 1
-            time.sleep(0.3)  # let FS writes settle
+            time.sleep(1.0)  # rapid psave calls corrupt presets.json (in-place patcher race)
         playlists[group] = ids
 
     for pl_id, group in enumerate(ordered, start=1):
@@ -119,10 +127,12 @@ def main():
                 "end": 0,
                 "r": True,
             },
-            "psave": pl_id, "n": group, "on": True,
+            # "o" marks this as a playlist/API preset: without it psave
+            # snapshots the current light state instead of the playlist
+            "psave": pl_id, "n": group, "on": True, "o": True,
         })
         print(f"playlist {pl_id}  {group}  -> presets {ids}")
-        time.sleep(0.3)
+        time.sleep(1.0)
 
     time.sleep(1)  # let the last psave finish writing presets.json
     add_motor_toggle_preset()
