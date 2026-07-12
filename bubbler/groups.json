@@ -22,16 +22,16 @@
       {"fx": "Pixelwave", "pal": 6},
       {"fx": "Noisemove", "pal": 6},
       {"fx": "Freqwave"},
-      {"fx": "Gravimeter", "pal": 6},
+      {"fx": "Gravimeter", "pal": 6, "mi": true},
       {"fx": "Blurz Plus", "pal": 6}
     ],
     "Party": [
       {"fx": "Noisefire"},
-      {"fx": "Matripix", "pal": 6},
-      {"fx": "Freqmatrix"},
+      {"fx": "Matripix", "pal": 6, "mi": true},
+      {"fx": "Freqmatrix", "mi": true},
       {"fx": "Rocktaves", "pal": 6},
       {"fx": "Funky Plank"},
-      {"fx": "Waterfall", "pal": 6}
+      {"fx": "Waterfall", "pal": 6, "mi": true}
     ]
   }
 }

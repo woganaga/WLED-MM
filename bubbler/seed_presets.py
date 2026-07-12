@@ -104,6 +104,10 @@ def main():
                    "ix": entry.get("ix", 128)}
             if "pal" in entry:
                 seg["pal"] = entry["pal"]
+            if entry.get("mi"):
+                # mirror: directional effects (one end feeds, far end dark)
+                # look better symmetric on the totem's ring row
+                seg["mi"] = True
             post_state({"on": True, "mainseg": 0, "seg": [seg],
                         "psave": next_id, "n": f"{group}: {fx}",
                         "ib": True, "sb": True})
