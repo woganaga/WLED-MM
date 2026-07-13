@@ -305,6 +305,19 @@ class AutoPlaylistUsermod : public Usermod {
 
       if (millis() < 10000) return; // Wait for device to settle
 
+      // WLEDMM/Bubbler: playlist unloaded (e.g. a stop-playlist command preset)
+      // -> stand down completely until a playlist is selected again. Not
+      // covered by the lastAutoPlaylist check below: one enable path never
+      // set lastAutoPlaylist, leaving autochange running on a stale id list.
+      if (functionality_enabled && currentPlaylist <= 0) {
+        #ifdef USERMOD_AUTO_PLAYLIST_DEBUG
+        USER_PRINTLN(F("AutoPlaylist: disable, playlist unloaded"));
+        #endif
+        functionality_enabled = false;
+        pending_preset = 0;
+        autoChangeIds.clear();
+      }
+
       if (lastAutoPlaylist > 0 && currentPlaylist != lastAutoPlaylist && currentPreset != 0) {
         if (anyPlaylist && currentPlaylist > 0 && currentPlaylist != ambientPlaylist) {
           // adopt the manually selected playlist as the new music "group" and keep cycling within it
@@ -331,11 +344,13 @@ class AutoPlaylistUsermod : public Usermod {
         }
       }
 
-      if (!functionality_enabled && currentPlaylist == musicPlaylist) {
+      if (!functionality_enabled && currentPlaylist > 0 && currentPlaylist == musicPlaylist) {
           #ifdef USERMOD_AUTO_PLAYLIST_DEBUG
           USER_PRINTF("AutoPlaylist: enabled due selecting musicPlaylist(%u)\n", musicPlaylist);
           #endif
           functionality_enabled = true;
+          lastAutoPlaylist = currentPlaylist; // WLEDMM/Bubbler: was never set here, breaking later stand-down checks
+          autoChangeIds.clear();              // WLEDMM/Bubbler: reload ids from the (re)selected playlist
       }
 
       if (bri == 0) return;

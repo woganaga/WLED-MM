@@ -1,7 +1,7 @@
 {
   "_comment": "Effect groups for the totem's auto-cycling show mode. Each group becomes a WLED playlist preset; each entry becomes a single-effect preset. Effect names must match /json/eff exactly (seed_presets.py warns on misses). 'pal' is a palette id (6 = Party). sx/ix are speed/intensity 0-255.",
   "ambient_group": "Ambient",
-  "group_dur": {"Flow": 200},
+  "group_dur": {"Flow": 200, "Wash": 300},
   "groups": {
     "Ambient": [
       {"fx": "Pacifica"},
@@ -33,6 +33,13 @@
       {"fx": "Rocktaves", "pal": 6},
       {"fx": "Funky Plank"},
       {"fx": "Waterfall", "pal": 6, "mi": true}
+    ],
+    "Wash": [
+      {"fx": "Colorloop", "sx": 12, "ix": 16},
+      {"fx": "Palette", "pal": 11, "sx": 20},
+      {"fx": "Colorwaves", "pal": 9, "sx": 30},
+      {"fx": "Flow", "pal": 7, "sx": 25},
+      {"fx": "Lake", "pal": 9, "sx": 30}
     ]
   }
 }
