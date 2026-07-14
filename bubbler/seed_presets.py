@@ -121,9 +121,11 @@ def main():
                 # mirror: directional effects (one end feeds, far end dark)
                 # look better symmetric on the totem's ring row
                 seg["mi"] = True
+            # ib False: don't store brightness in effect presets, so the
+            # global brightness survives effect changes during the show
             post_state({"on": True, "mainseg": 0, "seg": [seg],
                         "psave": next_id, "n": f"{group}: {fx}",
-                        "ib": True, "sb": True})
+                        "ib": False, "sb": True})
             print(f"preset {next_id:3d}  {group}: {fx}")
             if group_has_bubbler:
                 # in a bubbler-driving group every preset sets the motor, so
