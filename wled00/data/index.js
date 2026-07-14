@@ -1976,11 +1976,16 @@ function readState(s,command=false)
 	selectSlot(csel);
 	if (i.cct != null && i.cct>=0) gId("sliderA").value = i.cct;
 
-	// WLEDMM/Bubbler: status bar (current effect + bubble motor timer)
+	// WLEDMM/Bubbler: status bar (current effect + playlist + bubble motor timer)
 	var bbfx = gId('bbfx');
 	if (bbfx) {
 		var fxnm = "";
 		try { fxnm = eJson.find((o)=>{return o.id==i.fx;}).name; } catch(e) {}
+		if (s.pl > 0) {
+			var plnm = "#" + s.pl;
+			try { var n = pName(s.pl); if (n) plnm = n; } catch(e) {}
+			fxnm += " • " + plnm;
+		}
 		bbfx.innerText = fxnm;
 		var mr = s.MultiRelay;
 		var bbcyc = gId('bbcyc');

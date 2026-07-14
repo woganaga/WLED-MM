@@ -19,12 +19,12 @@
       {"fx": "DJ Light"}
     ],
     "Flow": [
-      {"fx": "Waverly", "pal": 6, "bubbler": true},
+      {"fx": "Waverly", "pal": 6},
       {"fx": "Pixelwave", "pal": 6},
       {"fx": "Noisemove", "pal": 6},
       {"fx": "Freqwave"},
       {"fx": "Gravimeter", "pal": 6, "mi": true},
-      {"fx": "Blurz Plus", "pal": 6, "bubbler": true}
+      {"fx": "Blurz Plus", "pal": 6}
     ],
     "Party": [
       {"fx": "Noisefire"},
